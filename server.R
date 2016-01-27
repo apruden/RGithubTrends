@@ -4,17 +4,19 @@ library(ggplot2)
 library(parallel)
 library(reshape2)
 
-source('config.R')
+source('config-prod.R')
 
 loadData <- function() {
     message('Loading git data ...')
-    req <- GET('https://api.github.com/search/repositories?q=language:R&sort=stars&order=desc&per_page=25', authenticate(githubUser, githubToken))
+    req <- GET('https://api.github.com/search/repositories?q=language:R&sort=stars&order=desc&per_page=20', authenticate(githubUser, githubToken))
     stop_for_status(req)
     repos <- content(req)$items
-    cl <- makeCluster(detectCores() * 2)
+    ncores <- detectCores()
+    message(paste('Cluster on', ncores, 'nodes.'))
+    cl <- makeCluster(ncores)
     data <- parSapply(cl, repos, function(repo) {
                       library(httr)
-                      source('config.R')
+                      source('config-prod.R')
                       req <- GET(paste0(repo$url, '/stats/participation'), authenticate(githubUser, githubToken))
                       stop_for_status(req)
                       tmp <- content(req)
@@ -22,15 +24,19 @@ loadData <- function() {
 })
     stopCluster(cl)
 
-    if (length(data) > 0) {
+    tryCatch({
         df <- as.data.frame(matrix(as.numeric(data[2:nrow(data),]), nrow(data)-1, ncol(data)))
         colnames(df) <- data[1,]
         melt(cbind(data.frame(Week=1:52), df),
              id.vars='Week',
              variable.name='Repository')
-    } else {
-        NULL
-    }
+    }, warning=function(warn) {
+        message(str(warn))
+        return(NULL)
+    }, error= function(err) {
+        message(str(err))
+        return(NULL)
+    })
 }
 
 GitData <- NULL
@@ -52,7 +58,10 @@ shinyServer(function(input, output) {
                 }
             })
             output$plot1 <- renderPlot({
-                if (is.null(GitData)) return(ggplot())
+                if (is.null(GitData)) {
+                    message('No data to plot.')
+                    return(ggplot())
+                }
 
                 tmp <- GitData[GitData$Repository %in% input$repos,]
                 ggplot(tmp,
