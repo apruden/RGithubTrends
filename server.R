@@ -8,23 +8,22 @@ source('config-prod.R')
 
 loadData <- function() {
     message('Loading git data ...')
-    req <- GET('https://api.github.com/search/repositories?q=language:R&sort=stars&order=desc&per_page=20', authenticate(githubUser, githubToken))
-    stop_for_status(req)
-    repos <- content(req)$items
-    ncores <- detectCores()
-    message(paste('Cluster on', ncores, 'nodes.'))
-    cl <- makeCluster(ncores)
-    data <- parSapply(cl, repos, function(repo) {
-                      library(httr)
-                      source('config-prod.R')
-                      req <- GET(paste0(repo$url, '/stats/participation'), authenticate(githubUser, githubToken))
-                      stop_for_status(req)
-                      tmp <- content(req)
-                      c(repo$name, tmp$all)
-})
-    stopCluster(cl)
-
     tryCatch({
+        req <- GET('https://api.github.com/search/repositories?q=language:R&sort=stars&order=desc&per_page=20', authenticate(githubUser, githubToken))
+        stop_for_status(req)
+        repos <- content(req)$items
+        ncores <- detectCores()
+        message(paste('Cluster on', ncores, 'nodes.'))
+        cl <- makeCluster(ncores)
+        data <- parSapply(cl, repos, function(repo) {
+                          library(httr)
+                          source('config-prod.R')
+                          req <- GET(paste0(repo$url, '/stats/participation'), authenticate(githubUser, githubToken))
+                          stop_for_status(req)
+                          tmp <- content(req)
+                          c(repo$name, tmp$all)
+})
+        stopCluster(cl)
         df <- as.data.frame(matrix(as.numeric(data[2:nrow(data),]), nrow(data)-1, ncol(data)))
         colnames(df) <- data[1,]
         melt(cbind(data.frame(Week=1:52), df),
@@ -32,10 +31,10 @@ loadData <- function() {
              variable.name='Repository')
     }, warning=function(warn) {
         message(str(warn))
-        return(NULL)
+        return(read.csv('GitData.csv'))
     }, error= function(err) {
         message(str(err))
-        return(NULL)
+        return(read.csv('GitData.csv'))
     })
 }
 
@@ -47,7 +46,9 @@ shinyServer(function(input, output) {
                 on.exit(progress$close())
                 progress$set(message='Loading..', value=0)
 
-                if (is.null(GitData)) GitData <<- loadData()
+                if (is.null(GitData)) {
+                    GitData <<- loadData()
+                }
 
                 progress$inc(1, detail='done.')
 
