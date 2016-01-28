@@ -10,3 +10,7 @@ If the data is not loaded correctly, you can refresh the page.
 ## Model
 
 Data is fitted using `glm` for a Poisson distribution.
+
+# Source Code
+
+Source code at github [https://github.com/apruden/RGithubTrends](https://github.com/apruden/RGithubTrends)
